@@ -1,3 +1,22 @@
 pygame
 numpy
 librosa
+
+# requirements.txt - Dependencias del proyecto
+
+# Core game engine
+pygame>=2.5.0
+
+# Audio analysis
+librosa>=0.10.0
+numpy>=1.24.0
+scipy>=1.10.0
+
+# Audio file support
+soundfile>=0.12.0
+
+# Opcional: Para visualización de análisis
+matplotlib>=3.7.0
+
+# Opcional: Para selector de archivos (generalmente viene con Python)
+# tkinter (incluido con Python en la mayoría de instalaciones)
