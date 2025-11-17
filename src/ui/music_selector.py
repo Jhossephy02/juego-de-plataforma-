@@ -2,6 +2,7 @@
 
 import pygame
 import os
+import random
 from tkinter import filedialog
 import tkinter as tk
 from src.settings import WIDTH, HEIGHT, MUSIC_DIR, SUPPORTED_AUDIO_FORMATS
@@ -143,7 +144,8 @@ class MusicSelector:
             "📁 Cargar Archivo",
             self.font_medium,
             (100, 200, 100),
-            (120, 255, 120)
+            (120, 255, 120),
+            (255, 255, 255)
         )
         
         self.btn_play = Button(
@@ -151,7 +153,8 @@ class MusicSelector:
             "▶ Jugar",
             self.font_medium,
             (100, 180, 255),
-            (120, 200, 255)
+            (120, 200, 255),
+            (255, 255, 255)
         )
         
         self.btn_back = Button(
@@ -159,7 +162,8 @@ class MusicSelector:
             "⬅ Volver al Menú",
             self.font_medium,
             (200, 100, 100),
-            (255, 120, 120)
+            (255, 120, 120),
+            (255, 255, 255)
         )
         
         # Partículas de fondo
@@ -209,8 +213,6 @@ class MusicSelector:
     
     def run(self):
         """Loop principal del selector"""
-        import random
-        
         while self.running:
             dt = self.clock.tick(60) / 1000.0
             
@@ -223,6 +225,10 @@ class MusicSelector:
                 if event.type == pygame.MOUSEWHEEL:
                     self.scroll_offset -= event.y * 30
                     self.scroll_offset = max(0, min(self.scroll_offset, self.max_scroll))
+                
+                if event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_ESCAPE:
+                        return None, 'menu'
             
             # Actualizar
             self._update(events)
@@ -287,3 +293,79 @@ class MusicSelector:
         )
         
         root.destroy()
+        
+        if filepath:
+            self.selected_music = filepath
+            print(f"🎵 Archivo cargado: {os.path.basename(filepath)}")
+            
+            # Marcar como seleccionado visualmente
+            for entry in self.music_entries:
+                entry.selected = False
+    
+    def _draw(self):
+        """Dibuja la pantalla"""
+        # Fondo degradado
+        for y in range(HEIGHT):
+            ratio = y / HEIGHT
+            r = int(20 + ratio * 30)
+            g = int(30 + ratio * 40)
+            b = int(70 + ratio * 50)
+            pygame.draw.line(self.screen, (r, g, b), (0, y), (WIDTH, y))
+        
+        # Partículas de fondo
+        for particle in self.particles:
+            pygame.draw.circle(
+                self.screen,
+                (100, 150, 200),
+                (int(particle['x']), int(particle['y'])),
+                particle['size']
+            )
+        
+        # Título
+        title_text = self.font_title.render("Selecciona tu Música", True, (255, 255, 255))
+        title_rect = title_text.get_rect(center=(WIDTH // 2, 80))
+        
+        # Sombra del título
+        shadow_text = self.font_title.render("Selecciona tu Música", True, (0, 0, 0))
+        shadow_rect = shadow_text.get_rect(center=(WIDTH // 2 + 3, 83))
+        self.screen.blit(shadow_text, shadow_rect)
+        self.screen.blit(title_text, title_rect)
+        
+        # Área de scroll (crear máscara de recorte)
+        scroll_area = pygame.Surface((WIDTH, HEIGHT - 400))
+        scroll_area.set_colorkey((0, 0, 0))
+        
+        # Dibujar entradas en el área de scroll
+        for entry in self.music_entries:
+            if -60 < entry.rect.y < HEIGHT:
+                entry.draw(self.screen)
+        
+        # Indicador de scroll si hay más contenido
+        if self.max_scroll > 0:
+            scroll_text = self.font_small.render("⇅ Usa la rueda del mouse para desplazar", True, (180, 180, 180))
+            scroll_rect = scroll_text.get_rect(center=(WIDTH // 2, HEIGHT - 250))
+            self.screen.blit(scroll_text, scroll_rect)
+        
+        # Mensaje si no hay música
+        if not self.music_files:
+            no_music_text = self.font_medium.render(
+                "No hay archivos de música. Usa 'Cargar Archivo' para seleccionar uno.",
+                True, (255, 200, 100)
+            )
+            no_music_rect = no_music_text.get_rect(center=(WIDTH // 2, HEIGHT // 2))
+            self.screen.blit(no_music_text, no_music_rect)
+        
+        # Dibujar botones
+        self.btn_load_file.draw(self.screen)
+        self.btn_play.draw(self.screen)
+        self.btn_back.draw(self.screen)
+        
+        # Indicador de selección
+        if self.selected_music:
+            selected_name = os.path.basename(self.selected_music)
+            selected_text = self.font_small.render(
+                f"Seleccionado: {selected_name[:40]}",
+                True, (100, 255, 100)
+            )
+            selected_rect = selected_text.get_rect(center=(WIDTH // 2, HEIGHT - 280))
+            self.screen.blit(selected_text, selected_rect)

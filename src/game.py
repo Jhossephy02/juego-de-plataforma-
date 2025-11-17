@@ -1,9 +1,10 @@
-# src/game.py - Sistema de juego completo y mejorado
+# src/game.py - Sistema de juego mejorado con mejor jugabilidad
+
 import pygame
 import os
 import math
 from src.settings import (WIDTH, HEIGHT, FPS, BLACK, WHITE, GREEN, RED, YELLOW,
-                          UI_CONFIG, PURPLE)
+                          UI_CONFIG, PURPLE, BLUE)
 from src.entities.player import Player
 from src.entities.obstacle_manager import ObstacleManager
 from src.world.parallax import Parallax
@@ -11,12 +12,13 @@ from src.core.audio_analyzer import AudioAnalyzer
 from src.effects.particles import ParticleSystem, BeatPulse
 
 class Game:
-    """Clase principal del juego con mejoras visuales y de gameplay"""
+    """Juego mejorado con mejor sincronización musical"""
     
-    def __init__(self, screen, clock, music_path=None):
+    def __init__(self, screen, clock, music_path=None, difficulty='normal'):
         self.screen = screen
         self.clock = clock
         self.running = True
+        self.difficulty = difficulty
         
         # Sistema de música y análisis
         self.music_path = music_path
@@ -25,7 +27,7 @@ class Game:
         if music_path and os.path.exists(music_path):
             try:
                 print(f"\n{'='*60}")
-                print(f"🎮 INICIANDO JUEGO")
+                print(f"🎮 INICIANDO JUEGO - Dificultad: {difficulty.upper()}")
                 print(f"{'='*60}")
                 
                 # Analizar audio
@@ -33,7 +35,7 @@ class Game:
                 
                 # Cargar y reproducir música
                 pygame.mixer.music.load(music_path)
-                pygame.mixer.music.set_volume(0.6)
+                pygame.mixer.music.set_volume(0.7)
                 
                 print(f"{'='*60}\n")
             except Exception as e:
@@ -43,14 +45,15 @@ class Game:
         # Setup del mundo
         base = os.path.dirname(os.path.dirname(__file__))
         
-        # Capas de parallax
+        # Capas de parallax con velocidad ajustada por dificultad
+        diff_mult = self._get_difficulty_multiplier()
         layers = [
-            ('sky', 'sky.png', 0.01),
-            ('mountains', 'mountains.png', 0.03),
-            ('mid', 'mid1.png', 0.05),
-            ('mid', 'mid2.png', 0.07),
-            ('foreground', 'fg1.png', 0.1),
-            ('foreground', 'fg2.png', 0.13)
+            ('sky', 'sky.png', 0.01 * diff_mult),
+            ('mountains', 'mountains.png', 0.03 * diff_mult),
+            ('mid', 'mid1.png', 0.05 * diff_mult),
+            ('mid', 'mid2.png', 0.07 * diff_mult),
+            ('foreground', 'fg1.png', 0.1 * diff_mult),
+            ('foreground', 'fg2.png', 0.13 * diff_mult)
         ]
         
         self.layers = []
@@ -71,25 +74,30 @@ class Game:
             self.ground_y
         )
         
+        # Aplicar multiplicadores de dificultad
+        self._apply_difficulty_settings()
+        
         # Efectos visuales
         self.particle_system = ParticleSystem()
         self.beat_pulse = BeatPulse(WIDTH // 2, HEIGHT // 2)
+        self.beat_indicators = []  # Indicadores visuales de beats
         
         # Estado del juego
         self.game_time = 0
         self.score = 0
         self.combo = 0
         self.max_combo = 0
+        self.perfect_dodges = 0  # Esquivas perfectas (muy cerca)
         self.health = 3
         self.max_health = 3
         self.game_over = False
         self.paused = False
         self.music_started = False
         
-        # Power-ups activos
-        self.shield_active = False
-        self.shield_timer = 0
-        self.shield_duration = 5.0
+        # Slow motion
+        self.slow_motion_active = False
+        self.slow_motion_timer = 0
+        self.slow_motion_duration = 3.0
         
         # UI
         self.setup_ui()
@@ -99,9 +107,31 @@ class Game:
         self.camera_offset_x = 0
         self.camera_offset_y = 0
         
-        # Detección de beats para efectos
+        # Detección de beats
         self.last_beat_time = 0
         self.beat_cooldown = 0.1
+        
+        # Sistema de feedback visual
+        self.feedback_messages = []
+    
+    def _get_difficulty_multiplier(self):
+        """Obtiene multiplicador basado en dificultad"""
+        from src.ui.difficulty_selector import DifficultySelector
+        return DifficultySelector.DIFFICULTIES.get(self.difficulty, {}).get('speed_mult', 1.0)
+    
+    def _apply_difficulty_settings(self):
+        """Aplica configuración de dificultad"""
+        from src.ui.difficulty_selector import DifficultySelector
+        settings = DifficultySelector.DIFFICULTIES.get(self.difficulty, {})
+        
+        speed_mult = settings.get('speed_mult', 1.0)
+        spawn_mult = settings.get('spawn_mult', 1.0)
+        
+        # Ajustar velocidad base
+        self.obstacle_manager.base_speed *= speed_mult
+        
+        # Ajustar frecuencia de spawn (inverso porque menor = más rápido)
+        self.obstacle_manager.spawn_freq_mult = 1.0 / spawn_mult
     
     def setup_ui(self):
         """Configura elementos de UI"""
@@ -117,6 +147,10 @@ class Game:
         self.font_small = pygame.font.SysFont(
             UI_CONFIG['font_name'],
             18
+        )
+        self.font_tiny = pygame.font.SysFont(
+            UI_CONFIG['font_name'],
+            14
         )
     
     def start_music(self):
@@ -138,7 +172,12 @@ class Game:
         self.start_music()
         
         while self.running:
+            # Calcular delta time
             dt = self.clock.tick(FPS) / 1000.0
+            
+            # Aplicar slow motion
+            if self.slow_motion_active:
+                dt *= 0.5
             
             # Eventos
             events = pygame.event.get()
@@ -156,6 +195,10 @@ class Game:
                     
                     if event.key == pygame.K_r and self.game_over:
                         return 'restart'
+                    
+                    # Activar slow motion manual (como power-up de habilidad)
+                    if event.key == pygame.K_LSHIFT and not self.slow_motion_active:
+                        self.activate_slow_motion()
             
             # Actualizar solo si no está pausado
             if not self.paused and not self.game_over:
@@ -168,15 +211,29 @@ class Game:
         
         return 'menu'
     
+    def activate_slow_motion(self):
+        """Activa cámara lenta temporal"""
+        self.slow_motion_active = True
+        self.slow_motion_timer = 0
+        self.show_feedback("SLOW MOTION!", (100, 200, 255), 1.5)
+    
     def update(self, dt):
         """Actualiza la lógica del juego"""
         self.game_time += dt
+        
+        # Actualizar slow motion
+        if self.slow_motion_active:
+            self.slow_motion_timer += dt / 0.5  # Compensar por el dt reducido
+            if self.slow_motion_timer >= self.slow_motion_duration:
+                self.slow_motion_active = False
+                self.slow_motion_timer = 0
         
         # Detectar beats para efectos visuales
         if self.audio_analyzer:
             if self.audio_analyzer.is_beat(self.game_time, 0.05):
                 if self.game_time - self.last_beat_time > self.beat_cooldown:
                     self.beat_pulse.trigger()
+                    self.create_beat_indicator()
                     self.last_beat_time = self.game_time
         
         # Actualizar camera shake
@@ -195,7 +252,7 @@ class Game:
         
         # Actualizar jugador
         keys = pygame.key.get_pressed()
-        self.player.update(keys, self.ground_y)
+        self.player.update(keys, self.ground_y, dt)
         
         # Actualizar obstáculos
         self.obstacle_manager.update(dt, self.game_time)
@@ -205,25 +262,20 @@ class Game:
         if powerup_type:
             self.activate_powerup(powerup_type)
         
-        # Actualizar power-ups activos
-        if self.shield_active:
-            self.shield_timer += dt
-            if self.shield_timer >= self.shield_duration:
-                self.shield_active = False
-                self.shield_timer = 0
-        
         # Verificar colisiones con obstáculos
         collision = self.obstacle_manager.check_collision(self.player.rect)
         if collision:
-            if self.shield_active:
-                # El escudo absorbe el golpe
+            if self.player.shield_active or self.player.invincible_active:
+                # Power-up absorbe el golpe
                 collision.kill()
-                self.shield_active = False
+                if self.player.shield_active:
+                    self.player.shield_active = False
                 self.particle_system.emit_explosion(
                     collision.rect.centerx,
                     collision.rect.centery,
                     (100, 200, 255)
                 )
+                self.show_feedback("PROTEGIDO!", (100, 255, 100), 1.0)
             elif not self.player.invulnerable:
                 self.handle_collision(collision)
         
@@ -233,58 +285,108 @@ class Game:
         # Actualizar efectos
         self.particle_system.update(dt)
         self.beat_pulse.update(dt)
+        self.update_beat_indicators(dt)
+        self.update_feedback_messages(dt)
         
         # Generar estela de partículas del jugador
-        if int(self.game_time * 60) % 3 == 0:
+        if int(self.game_time * 60) % 3 == 0 and not self.player.on_ground:
             self.particle_system.emit_trail(
                 self.player.rect.centerx,
-                self.player.rect.centery,
-                (100, 150, 255)
+                self.player.rect.bottom,
+                BLUE
             )
         
         # Verificar fin de música
         if self.music_path and not pygame.mixer.music.get_busy() and self.game_time > 1:
             self.game_over = True
+            self.show_feedback("¡COMPLETADO!", GREEN, 3.0)
             print(f"\n🎉 ¡Juego completado! Score: {self.score}")
+    
+    def create_beat_indicator(self):
+        """Crea indicador visual de beat en el suelo"""
+        self.beat_indicators.append({
+            'x': WIDTH,
+            'alpha': 255,
+            'size': 20
+        })
+    
+    def update_beat_indicators(self, dt):
+        """Actualiza indicadores de beat"""
+        for indicator in self.beat_indicators[:]:
+            indicator['x'] -= 300 * dt
+            indicator['alpha'] -= 500 * dt
+            indicator['size'] += 50 * dt
+            
+            if indicator['alpha'] <= 0:
+                self.beat_indicators.remove(indicator)
+    
+    def show_feedback(self, message, color, duration=1.0):
+        """Muestra mensaje de feedback"""
+        self.feedback_messages.append({
+            'text': message,
+            'color': color,
+            'time': 0,
+            'duration': duration,
+            'y': HEIGHT // 2 - 100
+        })
+    
+    def update_feedback_messages(self, dt):
+        """Actualiza mensajes de feedback"""
+        for msg in self.feedback_messages[:]:
+            msg['time'] += dt
+            msg['y'] -= 30 * dt
+            
+            if msg['time'] >= msg['duration']:
+                self.feedback_messages.remove(msg)
     
     def activate_powerup(self, powerup_type):
         """Activa un power-up"""
+        self.player.activate_powerup(powerup_type)
+        
         if powerup_type == 'shield':
-            self.shield_active = True
-            self.shield_timer = 0
-            print("🛡️ ¡Escudo activado!")
-            
-            # Efecto visual
-            self.particle_system.emit_powerup_collect(
-                self.player.rect.centerx,
-                self.player.rect.centery
-            )
+            self.show_feedback("¡ESCUDO!", (100, 200, 255), 1.5)
+        elif powerup_type == 'invincible':
+            self.show_feedback("¡INVENCIBLE!", YELLOW, 1.5)
+        elif powerup_type == 'slow':
+            self.activate_slow_motion()
+        
+        # Efecto visual
+        self.particle_system.emit_powerup_collect(
+            self.player.rect.centerx,
+            self.player.rect.centery
+        )
+        
+        print(f"⭐ Power-up activado: {powerup_type}")
     
     def handle_collision(self, obstacle):
         """Maneja colisión con obstáculo"""
-        self.health -= 1
-        self.combo = 0
-        self.player.take_damage()
-        
-        # Efecto de cámara shake
-        self.camera_shake = 2.0
-        
-        # Partículas de colisión
-        self.particle_system.emit_explosion(
-            obstacle.rect.centerx,
-            obstacle.rect.centery,
-            RED
-        )
-        
-        # Eliminar obstáculo
-        obstacle.kill()
-        
-        print(f"💥 Colisión! HP: {self.health}")
-        
-        if self.health <= 0:
-            self.game_over = True
-            pygame.mixer.music.stop()
-            print(f"\n💀 Game Over! Score final: {self.score}")
+        if self.player.take_damage():
+            self.health -= 1
+            self.combo = 0
+            
+            # Efecto de cámara shake
+            self.camera_shake = 2.0
+            
+            # Partículas de colisión
+            self.particle_system.emit_explosion(
+                obstacle.rect.centerx,
+                obstacle.rect.centery,
+                RED
+            )
+            
+            # Feedback
+            self.show_feedback("¡AUCH!", RED, 1.0)
+            
+            # Eliminar obstáculo
+            obstacle.kill()
+            
+            print(f"💥 Colisión! HP: {self.health}")
+            
+            if self.health <= 0:
+                self.game_over = True
+                pygame.mixer.music.stop()
+                self.show_feedback("GAME OVER", RED, 3.0)
+                print(f"\n💀 Game Over! Score final: {self.score}")
     
     def check_dodged_obstacles(self):
         """Verifica si se esquivó algún obstáculo"""
@@ -292,6 +394,19 @@ class Game:
             # Si el obstáculo pasó al jugador
             if obstacle.rect.right < self.player.rect.left and not hasattr(obstacle, 'counted'):
                 points = obstacle.get_score()
+                
+                # Verificar si fue esquiva perfecta (muy cerca)
+                distance = abs(obstacle.rect.right - self.player.rect.left)
+                perfect_dodge = distance < 50
+                
+                if perfect_dodge:
+                    self.perfect_dodges += 1
+                    points *= 2
+                    self.show_feedback("¡PERFECTO!", YELLOW, 0.8)
+                    self.particle_system.emit_sparkle(
+                        self.player.rect.centerx,
+                        self.player.rect.centery
+                    )
                 
                 # Multiplicador de combo
                 combo_mult = 1.0 + (self.combo * 0.1)
@@ -303,11 +418,8 @@ class Game:
                 obstacle.counted = True
                 
                 # Efecto visual de combo
-                if self.combo > 1:
-                    self.particle_system.emit_sparkle(
-                        obstacle.rect.centerx,
-                        obstacle.rect.centery
-                    )
+                if self.combo > 3:
+                    self.show_feedback(f"COMBO x{self.combo}!", GREEN, 0.6)
     
     def countdown(self):
         """Muestra cuenta regresiva antes de comenzar"""
@@ -357,14 +469,23 @@ class Game:
         for layer in self.layers:
             layer.draw(camera_surface)
         
-        # Pulso de beat (detrás de todo)
+        # Pulso de beat
         self.beat_pulse.draw(camera_surface)
+        
+        # Indicadores de beat en el suelo
+        for indicator in self.beat_indicators:
+            alpha = int(indicator['alpha'])
+            size = int(indicator['size'])
+            surf = pygame.Surface((size * 2, 10), pygame.SRCALPHA)
+            color = (100, 200, 255, alpha)
+            pygame.draw.rect(surf, color, (0, 0, size * 2, 10), border_radius=5)
+            camera_surface.blit(surf, (indicator['x'] - size, self.ground_y - 5))
         
         # Suelo
         pygame.draw.rect(camera_surface, (80, 60, 40),
                         (0, self.ground_y, WIDTH, HEIGHT - self.ground_y))
         
-        # Línea de suelo
+        # Línea de suelo con efecto
         pygame.draw.line(camera_surface, (100, 80, 50),
                         (0, self.ground_y), (WIDTH, self.ground_y), 3)
         
@@ -377,124 +498,114 @@ class Game:
         # Jugador
         self.player.draw(camera_surface)
         
-        # Escudo visual si está activo
-        if self.shield_active:
-            shield_alpha = int(100 + math.sin(self.game_time * 10) * 50)
-            shield_surf = pygame.Surface((80, 80))
-            shield_surf.set_colorkey((0, 0, 0))
-            shield_surf.set_alpha(shield_alpha)
-            pygame.draw.circle(shield_surf, (100, 200, 255), (40, 40), 35, 3)
-            camera_surface.blit(shield_surf, (self.player.rect.centerx - 40, self.player.rect.centery - 40))
-        
         # UI
         self.draw_ui(camera_surface)
+        
+        # Feedback messages
+        self.draw_feedback_messages(camera_surface)
         
         # Aplicar camera shake
         self.screen.blit(camera_surface, (self.camera_offset_x, self.camera_offset_y))
         
-        # Pantalla de pausa (sin shake)
+        # Pantallas superpuestas (sin shake)
         if self.paused:
             self.draw_pause_screen()
         
-        # Pantalla de game over (sin shake)
         if self.game_over:
             self.draw_game_over_screen()
     
     def draw_ui(self, surface):
-        """Dibuja la interfaz de usuario"""
+        """Dibuja la interfaz de usuario mejorada"""
         # Score
         score_text = self.font_large.render(
-            f"Score: {self.score}",
+            f"{self.score}",
             True, WHITE
         )
-        surface.blit(score_text, UI_CONFIG['score_pos'])
+        surface.blit(score_text, (20, 20))
+        
+        # Label de score
+        label_text = self.font_tiny.render("SCORE", True, (180, 180, 180))
+        surface.blit(label_text, (20, 60))
         
         # Salud
-        health_x, health_y = UI_CONFIG['health_pos']
-        heart_size = 30
-        spacing = 40
-        
+        health_x, health_y = WIDTH - 200, 30
         for i in range(self.max_health):
             color = RED if i < self.health else (50, 50, 50)
-            pygame.draw.circle(
-                surface, color,
-                (health_x + i * spacing, health_y),
-                heart_size // 2
-            )
+            pygame.draw.circle(surface, color, (health_x + i * 40, health_y), 15)
+            pygame.draw.circle(surface, (255, 255, 255), (health_x + i * 40, health_y), 15, 2)
         
         # Combo
         if self.combo > 1:
             combo_scale = 1.0 + math.sin(self.game_time * 10) * 0.1
-            combo_size = int(self.font_large.get_height() * combo_scale)
+            combo_size = int(32 * combo_scale)
             combo_font = pygame.font.SysFont('arial', combo_size, bold=True)
             
             combo_text = combo_font.render(
-                f"COMBO x{self.combo}",
+                f"x{self.combo}",
                 True, YELLOW
             )
-            combo_rect = combo_text.get_rect(center=UI_CONFIG['combo_pos'])
+            combo_rect = combo_text.get_rect(midtop=(WIDTH // 2, 20))
             
+            # Sombra
+            shadow = combo_font.render(f"x{self.combo}", True, BLACK)
+            shadow_rect = shadow.get_rect(midtop=(WIDTH // 2 + 2, 22))
+            surface.blit(shadow, shadow_rect)
             surface.blit(combo_text, combo_rect)
         
-        # Power-ups activos
-        if self.shield_active:
-            shield_text = self.font_small.render(
-                f"🛡️ Escudo: {self.shield_duration - self.shield_timer:.1f}s",
-                True, (100, 200, 255)
-            )
-            surface.blit(shield_text, (20, 80))
-        
-        # Información de música
+        # Barra de progreso musical
         if self.audio_analyzer:
             progress = min(1.0, self.game_time / self.audio_analyzer.duration)
             bar_width = 300
-            bar_height = 20
+            bar_height = 8
             bar_x = WIDTH // 2 - bar_width // 2
-            bar_y = HEIGHT - 50
+            bar_y = HEIGHT - 30
             
-            # Barra de fondo
+            # Fondo
             pygame.draw.rect(surface, (50, 50, 50),
                            (bar_x, bar_y, bar_width, bar_height),
-                           border_radius=10)
+                           border_radius=4)
             
-            # Barra de progreso
+            # Progreso
             progress_width = int(bar_width * progress)
             if progress_width > 0:
-                pygame.draw.rect(surface, (100, 200, 100),
+                pygame.draw.rect(surface, (100, 200, 255),
                                (bar_x, bar_y, progress_width, bar_height),
-                               border_radius=10)
+                               border_radius=4)
             
-            # Borde
-            pygame.draw.rect(surface, (100, 100, 100),
-                           (bar_x, bar_y, bar_width, bar_height),
-                           2, border_radius=10)
+            # Marcadores de beats
+            for beat_time in self.audio_analyzer.beat_times:
+                if beat_time < self.audio_analyzer.duration:
+                    beat_x = bar_x + int((beat_time / self.audio_analyzer.duration) * bar_width)
+                    pygame.draw.line(surface, (255, 255, 255),
+                                   (beat_x, bar_y), (beat_x, bar_y + bar_height), 1)
+    
+    def draw_feedback_messages(self, surface):
+        """Dibuja mensajes de feedback"""
+        for msg in self.feedback_messages:
+            alpha = int(255 * (1 - msg['time'] / msg['duration']))
+            font = pygame.font.SysFont('arial', 48, bold=True)
             
-            # Tiempo
-            time_text = self.font_small.render(
-                f"{int(self.game_time)}s / {int(self.audio_analyzer.duration)}s",
-                True, (200, 200, 200)
-            )
-            time_rect = time_text.get_rect(center=(WIDTH // 2, bar_y - 15))
-            surface.blit(time_text, time_rect)
+            text = font.render(msg['text'], True, msg['color'])
+            text.set_alpha(alpha)
+            
+            text_rect = text.get_rect(center=(WIDTH // 2, int(msg['y'])))
+            surface.blit(text, text_rect)
     
     def draw_pause_screen(self):
         """Dibuja pantalla de pausa"""
-        # Overlay semi-transparente
         overlay = pygame.Surface((WIDTH, HEIGHT))
         overlay.set_alpha(180)
         overlay.fill(BLACK)
         self.screen.blit(overlay, (0, 0))
         
-        # Texto
         pause_font = pygame.font.SysFont('arial', 72, bold=True)
         pause_text = pause_font.render("PAUSA", True, WHITE)
         pause_rect = pause_text.get_rect(center=(WIDTH // 2, HEIGHT // 2 - 50))
         self.screen.blit(pause_text, pause_rect)
         
-        # Instrucciones
         instructions = [
             "ESC - Continuar",
-            "R - Reiniciar (desde game over)",
+            "R - Reiniciar (Game Over)",
         ]
         
         y_offset = HEIGHT // 2 + 50
@@ -506,13 +617,11 @@ class Game:
     
     def draw_game_over_screen(self):
         """Dibuja pantalla de game over"""
-        # Overlay
         overlay = pygame.Surface((WIDTH, HEIGHT))
         overlay.set_alpha(200)
         overlay.fill(BLACK)
         self.screen.blit(overlay, (0, 0))
         
-        # Título
         title_font = pygame.font.SysFont('arial', 72, bold=True)
         
         if self.health <= 0:
@@ -523,11 +632,12 @@ class Game:
         title_rect = title.get_rect(center=(WIDTH // 2, HEIGHT // 2 - 150))
         self.screen.blit(title, title_rect)
         
-        # Estadísticas
+        # Estadísticas detalladas
         stats = [
             f"Score Final: {self.score}",
             f"Max Combo: x{self.max_combo}",
-            f"Tiempo: {int(self.game_time)}s",
+            f"Esquivas Perfectas: {self.perfect_dodges}",
+            f"Dificultad: {self.difficulty.title()}",
         ]
         
         y_offset = HEIGHT // 2 - 50
@@ -540,7 +650,7 @@ class Game:
         # Instrucciones
         y_offset += 50
         instructions = [
-            "R - Reintentar con esta canción",
+            "R - Reintentar",
             "ESC - Volver al menú",
         ]
         
