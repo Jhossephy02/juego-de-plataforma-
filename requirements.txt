@@ -1,22 +1,58 @@
-pygame
-numpy
-librosa
+# requirements.txt - Dependencias del proyecto Rayman Shinobi
 
-# requirements.txt - Dependencias del proyecto
+# ==========================================
+# CORE GAME ENGINE
+# ==========================================
+pygame>=2.5.0              # Motor de juego principal
 
-# Core game engine
-pygame>=2.5.0
+# ==========================================
+# AUDIO ANALYSIS
+# ==========================================
+librosa>=0.10.0            # Análisis de audio avanzado
+numpy>=1.24.0              # Computación numérica
+scipy>=1.10.0              # Procesamiento de señales
 
-# Audio analysis
-librosa>=0.10.0
-numpy>=1.24.0
-scipy>=1.10.0
+# ==========================================
+# AUDIO FILE SUPPORT
+# ==========================================
+soundfile>=0.12.0          # Lectura de archivos de audio
+audioread>=3.0.0           # Soporte adicional de formatos
 
-# Audio file support
-soundfile>=0.12.0
+# ==========================================
+# OPTIONAL: YOUTUBE DOWNLOAD (si quieres agregar)
+# ==========================================
+# yt-dlp>=2023.0.0         # Descargar música de YouTube
+# pydub>=0.25.0            # Convertir formatos de audio
 
-# Opcional: Para visualización de análisis
-matplotlib>=3.7.0
+# ==========================================
+# OPTIONAL: DATA PERSISTENCE
+# ==========================================
+# json viene con Python estándar
 
-# Opcional: Para selector de archivos (generalmente viene con Python)
-# tkinter (incluido con Python en la mayoría de instalaciones)
+# ==========================================
+# DEVELOPMENT TOOLS (opcional)
+# ==========================================
+# matplotlib>=3.7.0        # Para visualizar análisis de audio
+# plotly>=5.0.0            # Gráficos interactivos
+
+# ==========================================
+# NOTAS DE INSTALACIÓN
+# ==========================================
+# 
+# INSTALACIÓN BÁSICA:
+# pip install pygame librosa numpy scipy soundfile audioread
+#
+# INSTALACIÓN COMPLETA (incluye opcionales):
+# pip install -r requirements.txt
+#
+# PARA WINDOWS:
+# Asegúrate de tener Microsoft Visual C++ 14.0 instalado
+# https://visualstudio.microsoft.com/visual-cpp-build-tools/
+#
+# PARA LINUX:
+# sudo apt-get install python3-dev libasound2-dev
+#
+# PARA MAC:
+# brew install portaudio
+#
+# ==========================================
