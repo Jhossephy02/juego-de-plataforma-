@@ -7,12 +7,13 @@ from src.settings import (GRAVITY, PLAYER_SPEED, PLAYER_JUMP, PLAYER_DOUBLE_JUMP
 # ¡¡¡CONTEO REAL DE FRAMES BASADO EN LAS IMÁGENES!!!
 FRAME_COUNTS = {
     'Attack_3.png': 4,
-    'Dead.png': 3,
+    'Dead.png': 3,   
     'Hurt.png': 3,
     'Idle.png': 6,
     'Jump.png': 10,
     'Run.png': 9,
 }
+
 
 class Player(pygame.sprite.Sprite):
     """Jugador con sprites animados de Rayman"""
@@ -127,13 +128,14 @@ class Player(pygame.sprite.Sprite):
             return False
         
         file_to_animation = {
-            'Idle.png': ('idle', FRAME_COUNTS['Idle.png']),
-            'Run.png': ('run', FRAME_COUNTS['Run.png']),
-            'Jump.png': ('jump', FRAME_COUNTS['Jump.png']),
-            'Attack_3.png': ('attack', FRAME_COUNTS['Attack_3.png']),
-            'Hurt.png': ('hurt', FRAME_COUNTS['Hurt.png']),
-            'Dead.png': ('dead', FRAME_COUNTS['Dead.png']),
-        }
+    'Idle.png': ('idle', FRAME_COUNTS['Idle.png']),
+    'Run.png': ('run', FRAME_COUNTS['Run.png']),
+    'Jump.png': ('jump', FRAME_COUNTS['Jump.png']),
+    'Attack_3.png': ('attack', FRAME_COUNTS['Attack_3.png']),
+    'Hurt.png': ('hurt', FRAME_COUNTS['Hurt.png']),
+    'Dead.png': ('dead', FRAME_COUNTS['Dead.png']),  
+}
+
         
         loaded_any = False
         
@@ -507,6 +509,8 @@ class Player(pygame.sprite.Sprite):
         self.is_animation_overriding = True # Nueva bandera para forzar la animación
         
         return True
+    
+    
     
     # ... (Resto de funciones draw, powerups, y procedurales no modificadas)
     def activate_powerup(self, powerup_type):
