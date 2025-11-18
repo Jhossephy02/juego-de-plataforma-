@@ -569,5 +569,5 @@ class Player(pygame.sprite.Sprite):
             py = y + int(radius * math.sin(angle))
             points.append((px, py))
         
-        pygame.draw.polygon(screen, color, points)
+        pygame.draw.polygon(screen, color, points)  
         pygame.draw.polygon(screen, WHITE, points, 1)
