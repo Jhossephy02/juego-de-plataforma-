@@ -1,153 +1,126 @@
-# src/core/audio_analyzer.py - Sistema avanzado de análisis musical
-import librosa
-import numpy as np
-from scipy import signal
-import warnings
-warnings.filterwarnings('ignore')
+# src/core/audio_analyzer.py - Versión SOLO con Pygame (sin librosa)
+
+import pygame
+import os
 
 class AudioAnalyzer:
-    """Analiza archivos de audio para generar obstáculos sincronizados"""
+    """Analizador de audio simplificado usando solo pygame"""
     
     def __init__(self, audio_path):
         print(f"🎵 Analizando: {audio_path}")
         
-        # Cargar audio
-        self.y, self.sr = librosa.load(audio_path, sr=22050, mono=True)
-        self.duration = librosa.get_duration(y=self.y, sr=self.sr)
-        
-        print(f"⏱️  Duración: {self.duration:.1f}s")
-        
-        # Análisis de tempo y beats
-        self._analyze_tempo()
-        
-        # Análisis de energía espectral
-        self._analyze_energy()
-        
-        # Análisis de segmentos musicales
-        self._analyze_segments()
-        
-        # Detección de cambios bruscos (drops, crescendos)
-        self._analyze_dynamics()
-        
-        print(f"✅ Análisis completado!")
-        print(f"   🥁 Tempo: {self.tempo:.0f} BPM")
-        print(f"   🎼 Beats detectados: {len(self.beat_times)}")
-        print(f"   📊 Segmentos: {len(self.segments)}")
+        try:
+            # Cargar audio con pygame
+            sound = pygame.mixer.Sound(audio_path)
+            
+            # Obtener duración en segundos
+            self.duration = sound.get_length()
+            
+            print(f"⏱️  Duración: {self.duration:.1f}s")
+            
+            # Generar análisis basado en BPM estándar
+            self._generate_simple_analysis()
+            
+            print(f"✅ Análisis completado!")
+            print(f"   🥁 Tempo: {self.tempo} BPM")
+            print(f"   🎼 Beats estimados: {len(self.beat_times)}")
+            print(f"   📊 Segmentos: {len(self.segments)}")
+            
+        except Exception as e:
+            print(f"❌ Error cargando audio: {e}")
+            print(f"   Usando valores por defecto...")
+            self._set_defaults()
     
-    def _analyze_tempo(self):
-        """Analiza tempo y beats"""
-        # Detección de tempo
-        tempo, beat_frames = librosa.beat.beat_track(
-            y=self.y, 
-            sr=self.sr,
-            hop_length=512
-        )
-        
-        self.tempo = tempo
-        self.beat_frames = beat_frames
-        self.beat_times = librosa.frames_to_time(
-            beat_frames, 
-            sr=self.sr, 
-            hop_length=512
-        )
-        
-        # Calcular intervalos entre beats
-        self.beat_intervals = np.diff(self.beat_times)
-        self.avg_beat_interval = np.mean(self.beat_intervals)
+    def _set_defaults(self):
+        """Establece valores por defecto"""
+        self.duration = 180.0
+        self.tempo = 120
+        self._generate_simple_analysis()
     
-    def _analyze_energy(self):
-        """Analiza la energía espectral a lo largo del tiempo"""
-        # RMS Energy
-        self.rms = librosa.feature.rms(y=self.y, hop_length=512)[0]
+    def _generate_simple_analysis(self):
+        """Genera análisis musical simplificado"""
+        # Tempo estándar (BPM)
+        self.tempo = 120
         
-        # Spectral Centroid (brillo del sonido)
-        self.spectral_centroid = librosa.feature.spectral_centroid(
-            y=self.y, 
-            sr=self.sr, 
-            hop_length=512
-        )[0]
+        # Calcular beats basado en BPM
+        beats_per_second = self.tempo / 60.0
+        num_beats = int(self.duration * beats_per_second)
         
-        # Zero Crossing Rate (percusividad)
-        self.zcr = librosa.feature.zero_crossing_rate(
-            y=self.y, 
-            hop_length=512
-        )[0]
+        # Generar tiempos de beats uniformemente distribuidos
+        self.beat_times = []
+        beat_interval = 60.0 / self.tempo
         
-        # Normalizar
-        self.rms_norm = (self.rms - np.min(self.rms)) / (np.max(self.rms) - np.min(self.rms) + 1e-8)
-        self.spectral_centroid_norm = (self.spectral_centroid - np.min(self.spectral_centroid)) / \
-                                       (np.max(self.spectral_centroid) - np.min(self.spectral_centroid) + 1e-8)
+        current_time = 0
+        while current_time < self.duration:
+            self.beat_times.append(current_time)
+            current_time += beat_interval
         
-        # Convertir frames a tiempo
-        self.times = librosa.frames_to_time(
-            np.arange(len(self.rms)), 
-            sr=self.sr, 
-            hop_length=512
-        )
-    
-    def _analyze_segments(self):
-        """Segmenta la canción en partes con características similares"""
-        # Chromagram para detección de cambios armónicos
-        chroma = librosa.feature.chroma_cqt(y=self.y, sr=self.sr)
+        self.avg_beat_interval = beat_interval
+        self.beat_intervals = [beat_interval] * len(self.beat_times)
         
-        # Detección de segmentos
-        boundaries = librosa.segment.agglomerative(chroma, k=8)
-        boundary_times = librosa.frames_to_time(boundaries, sr=self.sr)
+        # Generar energía simulada (aumenta gradualmente)
+        num_samples = int(self.duration * 10)  # 10 muestras/segundo
+        self.times = [i * (self.duration / num_samples) for i in range(num_samples)]
         
-        # Crear segmentos con información de energía promedio
+        # Energía que aumenta con el tiempo y tiene variaciones
+        import math
+        self.rms_norm = []
+        for t in self.times:
+            # Base que aumenta con el tiempo
+            base = 0.3 + (t / self.duration) * 0.4
+            # Variación sinusoidal
+            variation = 0.2 * math.sin(t * 2)
+            energy = base + variation
+            self.rms_norm.append(max(0.2, min(1.0, energy)))
+        
+        # Normalización espectral (similar a la energía)
+        self.spectral_centroid_norm = self.rms_norm.copy()
+        
+        # Segmentos (dividir canción en 8 partes)
+        num_segments = 8
         self.segments = []
-        for i in range(len(boundary_times) - 1):
-            start_time = boundary_times[i]
-            end_time = boundary_times[i + 1]
-            
-            # Calcular energía promedio del segmento
-            start_idx = int(start_time * self.sr / 512)
-            end_idx = int(end_time * self.sr / 512)
-            
-            avg_energy = np.mean(self.rms_norm[start_idx:end_idx])
+        segment_duration = self.duration / num_segments
+        
+        for i in range(num_segments):
+            start = i * segment_duration
+            end = (i + 1) * segment_duration
+            # Energía aumenta con el segmento
+            energy = 0.3 + (i / num_segments) * 0.5
             
             self.segments.append({
-                'start': start_time,
-                'end': end_time,
-                'energy': avg_energy,
-                'duration': end_time - start_time
+                'start': start,
+                'end': end,
+                'energy': energy,
+                'duration': segment_duration
             })
-    
-    def _analyze_dynamics(self):
-        """Detecta cambios dinámicos importantes (drops, builds)"""
-        # Calcular diferencias en energía
-        energy_diff = np.diff(self.rms_norm)
         
-        # Suavizar
-        energy_diff_smooth = signal.savgol_filter(
-            energy_diff, 
-            window_length=min(51, len(energy_diff) // 2 * 2 + 1), 
-            polyorder=3
-        )
+        # Drops (cambios bruscos) - en cuartos de la canción
+        self.drops = [
+            self.duration * 0.25,
+            self.duration * 0.75
+        ]
         
-        # Detectar picos (drops/builds)
-        threshold = np.std(energy_diff_smooth) * 2
-        peaks, _ = signal.find_peaks(np.abs(energy_diff_smooth), height=threshold)
+        # Builds (crescendos) - en la mitad
+        self.builds = [
+            self.duration * 0.5
+        ]
         
-        self.dynamic_changes = librosa.frames_to_time(peaks, sr=self.sr, hop_length=512)
+        # Frames (compatibilidad)
+        self.beat_frames = list(range(len(self.beat_times)))
         
-        # Clasificar como drop o build
-        self.drops = []
-        self.builds = []
-        
-        for peak in peaks:
-            if peak < len(energy_diff_smooth):
-                if energy_diff_smooth[peak] > 0:
-                    self.builds.append(librosa.frames_to_time(peak, sr=self.sr, hop_length=512))
-                else:
-                    self.drops.append(librosa.frames_to_time(peak, sr=self.sr, hop_length=512))
+        # Sample rate (estándar)
+        self.sr = 22050
     
     def get_energy_at_time(self, time):
         """Obtiene la energía en un momento específico"""
-        idx = int(time * self.sr / 512)
-        if 0 <= idx < len(self.rms_norm):
-            return self.rms_norm[idx]
-        return 0.5
+        if time < 0 or time > self.duration:
+            return 0.5
+        
+        # Encontrar índice más cercano
+        idx = int((time / self.duration) * len(self.rms_norm))
+        idx = max(0, min(idx, len(self.rms_norm) - 1))
+        
+        return self.rms_norm[idx]
     
     def get_intensity_at_time(self, time):
         """Obtiene un valor de intensidad combinado (0-1)"""
@@ -163,19 +136,28 @@ class AudioAnalyzer:
         # Combinar energía instantánea con promedio del segmento
         intensity = (energy * 0.7 + current_segment_energy * 0.3)
         
-        return np.clip(intensity, 0, 1)
+        return max(0.0, min(1.0, intensity))
     
-    def is_beat(self, time, tolerance=0.05):
+    def is_beat(self, time, tolerance=0.1):
         """Verifica si hay un beat cerca del tiempo dado"""
-        return any(abs(beat_time - time) < tolerance for beat_time in self.beat_times)
+        for beat_time in self.beat_times:
+            if abs(beat_time - time) < tolerance:
+                return True
+        return False
     
-    def is_drop(self, time, tolerance=0.2):
+    def is_drop(self, time, tolerance=0.3):
         """Verifica si hay un drop cerca del tiempo dado"""
-        return any(abs(drop_time - time) < tolerance for drop_time in self.drops)
+        for drop_time in self.drops:
+            if abs(drop_time - time) < tolerance:
+                return True
+        return False
     
-    def is_build(self, time, tolerance=0.2):
+    def is_build(self, time, tolerance=0.3):
         """Verifica si hay un build cerca del tiempo dado"""
-        return any(abs(build_time - time) < tolerance for build_time in self.builds)
+        for build_time in self.builds:
+            if abs(build_time - time) < tolerance:
+                return True
+        return False
     
     def get_next_beat_time(self, current_time):
         """Obtiene el tiempo del siguiente beat"""
@@ -194,5 +176,4 @@ class AudioAnalyzer:
         # La dificultad aumenta con el tiempo y la intensidad
         difficulty = (intensity * 0.7 + progress * 0.3)
         
-        return np.clip(difficulty, 0.2, 1.0)
-    
+        return max(0.2, min(1.0, difficulty))

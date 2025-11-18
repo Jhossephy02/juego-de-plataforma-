@@ -1,10 +1,11 @@
-# src/main.py - Punto de entrada principal mejorado
+# src/main.py - Punto de entrada principal corregido
 
 import pygame
 import sys
 from src.settings import WIDTH, HEIGHT, TITLE, FPS
 from src.ui.menu import run_menu
 from src.ui.music_selector import MusicSelector
+from src.ui.difficulty_selector import DifficultySelector
 from src.game import Game
 
 class GameApplication:
@@ -32,6 +33,7 @@ class GameApplication:
         # Estado
         self.running = True
         self.current_music = None
+        self.current_difficulty = 'normal'
         
         print(f"""
 ╔════════════════════════════════════════════════════════════╗
@@ -82,9 +84,14 @@ class GameApplication:
                     break
                 
                 elif next_action == 'play' and selected_music:
-                    # Iniciar juego con la música seleccionada
-                    self.current_music = selected_music
-                    self.play_game()
+                    # Mostrar selector de dificultad
+                    difficulty_selector = DifficultySelector(self.screen, self.clock)
+                    selected_difficulty = difficulty_selector.run()
+                    
+                    if selected_difficulty:
+                        self.current_music = selected_music
+                        self.current_difficulty = selected_difficulty
+                        self.play_game()
     
     def play_game(self):
         """Inicia una sesión de juego"""
@@ -93,12 +100,17 @@ class GameApplication:
             return
         
         # Crear y ejecutar el juego
-        game = Game(self.screen, self.clock, self.current_music)
+        game = Game(
+            self.screen, 
+            self.clock, 
+            self.current_music, 
+            self.current_difficulty
+        )
         result = game.run()
         
         # Procesar resultado
         if result == 'restart':
-            # Reiniciar con la misma música
+            # Reiniciar con la misma música y dificultad
             self.play_game()
         elif result == 'quit':
             self.running = False
