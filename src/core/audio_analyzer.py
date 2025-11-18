@@ -1,35 +1,45 @@
-# src/core/audio_analyzer.py - Versión SOLO con Pygame (sin librosa)
+# src/core/audio_analyzer.py - Versión optimizada y no bloqueante
 
 import pygame
 import os
+import threading
 
 class AudioAnalyzer:
-    """Analizador de audio simplificado usando solo pygame"""
+    """Analizador de audio simplificado usando solo pygame - OPTIMIZADO"""
     
     def __init__(self, audio_path):
-        print(f"🎵 Analizando: {audio_path}")
+        print(f"🎵 Cargando audio: {audio_path}")
         
+        self.audio_path = audio_path
+        self.duration = 180.0
+        self.tempo = 120
+        self.analyzing = True
+        
+        # Generar análisis básico inmediatamente para no bloquear
+        self._generate_simple_analysis()
+        
+        # Cargar audio en thread separado para no bloquear
+        self.load_thread = threading.Thread(target=self._load_audio_async)
+        self.load_thread.daemon = True
+        self.load_thread.start()
+        
+        print(f"✅ Análisis rápido completado!")
+        print(f"   🥁 Tempo: {self.tempo} BPM")
+        print(f"   🎼 Beats estimados: {len(self.beat_times)}")
+    
+    def _load_audio_async(self):
+        """Carga el audio en background sin bloquear"""
         try:
-            # Cargar audio con pygame
-            sound = pygame.mixer.Sound(audio_path)
-            
-            # Obtener duración en segundos
+            sound = pygame.mixer.Sound(self.audio_path)
             self.duration = sound.get_length()
+            print(f"⏱️  Duración real: {self.duration:.1f}s")
             
-            print(f"⏱️  Duración: {self.duration:.1f}s")
-            
-            # Generar análisis basado en BPM estándar
+            # Regenerar con duración real
             self._generate_simple_analysis()
-            
-            print(f"✅ Análisis completado!")
-            print(f"   🥁 Tempo: {self.tempo} BPM")
-            print(f"   🎼 Beats estimados: {len(self.beat_times)}")
-            print(f"   📊 Segmentos: {len(self.segments)}")
-            
         except Exception as e:
-            print(f"❌ Error cargando audio: {e}")
-            print(f"   Usando valores por defecto...")
-            self._set_defaults()
+            print(f"⚠️ No se pudo cargar audio: {e}")
+        finally:
+            self.analyzing = False
     
     def _set_defaults(self):
         """Establece valores por defecto"""
